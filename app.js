@@ -4,7 +4,8 @@
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const API_BASE          = 'https://api.rss2json.com/v1/api.json';
+// Free CORS proxy — returns raw RSS/Atom XML via JSON envelope
+const PROXY_BASE        = 'https://api.allorigins.win/get';
 const ITEMS_PER_PAGE    = 10;
 const FETCH_COUNT       = 20;                  // items fetched per feed
 const REFRESH_INTERVAL  = 60 * 60 * 1000;      // 1 hour in ms
@@ -112,17 +113,52 @@ function currentTimeString() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// XML Feed Parser (RSS 2.0 + Atom)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function parseXmlFeed(xmlText, feedConfig) {
+  const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+
+  if (doc.querySelector('parsererror')) {
+    throw new Error(`XML parse error for ${feedConfig.name}`);
+  }
+
+  // Support RSS 2.0 <item> and Atom <entry>
+  const items = Array.from(doc.querySelectorAll('item, entry'));
+
+  return items.slice(0, FETCH_COUNT).map((item) => {
+    const getText = (selector) => {
+      const el = item.querySelector(selector);
+      return el ? (el.textContent || '').trim() : '';
+    };
+
+    // Atom uses <link href="..."> | RSS uses <link>url</link>
+    const linkEl = item.querySelector('link');
+    const rawLink = linkEl
+      ? (linkEl.getAttribute('href') || linkEl.textContent.trim())
+      : '';
+
+    return {
+      title:    truncate(sanitizeText(getText('title')), 120),
+      summary:  truncate(sanitizeText(
+        getText('description') || getText('summary') || getText('content')
+      ), 200),
+      link:     validateHttpsUrl(rawLink),
+      pubDate:  getText('pubDate') || getText('published') || getText('updated') || '',
+      source:   feedConfig.name,
+      category: feedConfig.category,
+    };
+  }).filter((item) => item.title && item.link);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // RSS Fetching
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function fetchFeed(feedConfig) {
-  // Build query params — URLSearchParams handles encoding
-  const params = new URLSearchParams({
-    rss_url: feedConfig.url,
-    count:   String(FETCH_COUNT),
-  });
+  const params = new URLSearchParams({ url: feedConfig.url });
 
-  const response = await fetch(`${API_BASE}?${params.toString()}`, {
+  const response = await fetch(`${PROXY_BASE}?${params.toString()}`, {
     credentials: 'omit',   // no cookies sent to third-party API
     mode:        'cors',
   });
@@ -131,29 +167,14 @@ async function fetchFeed(feedConfig) {
     throw new Error(`HTTP ${response.status} from ${feedConfig.name}`);
   }
 
-  const data = await response.json();
+  const json = await response.json();
 
-  // Validate structure before processing (prevents unexpected data shapes)
-  if (
-    typeof data !== 'object' ||
-    data === null              ||
-    data.status !== 'ok'       ||
-    !Array.isArray(data.items)
-  ) {
-    throw new Error(`Unexpected response structure from ${feedConfig.name}`);
+  // Validate proxy response structure before processing
+  if (!json || typeof json.contents !== 'string') {
+    throw new Error(`Invalid proxy response for ${feedConfig.name}`);
   }
 
-  return data.items
-    .map((item) => ({
-      title:    truncate(sanitizeText(item.title), 120),
-      summary:  truncate(sanitizeText(item.description || item.content || ''), 200),
-      link:     validateHttpsUrl(item.link),     // HTTPS-only links
-      pubDate:  typeof item.pubDate === 'string' ? item.pubDate : '',
-      source:   feedConfig.name,
-      category: feedConfig.category,
-    }))
-    // Drop items with missing title or non-HTTPS link
-    .filter((item) => item.title && item.link);
+  return parseXmlFeed(json.contents, feedConfig);
 }
 
 async function fetchAllFeeds(tabName) {
