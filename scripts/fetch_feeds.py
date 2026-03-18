@@ -1,6 +1,21 @@
 """Server-side RSS fetcher for IT News Feed PWA — runs in GitHub Actions."""
 import feedparser, json, os, re
+import requests
 from datetime import datetime, timezone
+
+REQUEST_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+}
+
+def fetch_feed_content(url):
+    try:
+        resp = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
+        resp.raise_for_status()
+        return resp.text
+    except Exception as exc:
+        print(f"    requests failed ({exc}), retrying via feedparser")
+        return None
 
 FEEDS = {
     'global': [
@@ -46,7 +61,8 @@ for tab, configs in FEEDS.items():
     items = []
     for c in configs:
         try:
-            feed = feedparser.parse(c['url'])
+            raw_xml = fetch_feed_content(c['url'])
+            feed = feedparser.parse(raw_xml if raw_xml else c['url'])
             added = 0
             for e in feed.entries:
                 if added >= 20: break

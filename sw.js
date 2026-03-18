@@ -1,12 +1,11 @@
 'use strict';
 
-const CACHE_NAME = 'it-news-v5';
+const CACHE_NAME = 'it-news-v6';
 
 const STATIC_ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js',
   './manifest.json',
   './icons/icon.svg',
 ];
@@ -48,7 +47,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Network-first for API calls and feeds JSON (must always be fresh)
-  if (url.hostname === 'api.allorigins.win' || url.pathname.startsWith('/feeds/')) {
+  if (url.hostname === 'api.allorigins.win' || url.pathname.includes('/feeds/')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
