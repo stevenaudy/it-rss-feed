@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'it-news-v4';
+const CACHE_NAME = 'it-news-v5';
 
 const STATIC_ASSETS = [
   './',
@@ -47,8 +47,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for RSS API calls — cache as offline fallback
-  if (url.hostname === 'api.allorigins.win') {
+  // Network-first for API calls and feeds JSON (must always be fresh)
+  if (url.hostname === 'api.allorigins.win' || url.pathname.startsWith('/feeds/')) {
     event.respondWith(
       fetch(request)
         .then((response) => {

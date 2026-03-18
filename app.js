@@ -217,10 +217,27 @@ async function fetchFeed(feedConfig) {
 }
 
 async function fetchAllFeeds(tabName) {
-  const feeds = FEEDS[tabName];
+  // ── Primary: static JSON pre-built by GitHub Actions (same origin, no CORS) ──
+  try {
+    const res = await fetchWithTimeout(`./feeds/${tabName}.json`, FETCH_TIMEOUT_MS);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.items) && data.items.length > 0) {
+        const valid = data.items.filter(
+          (it) => it.title && it.link && it.link.startsWith('https://')
+        );
+        if (valid.length > 0) {
+          console.log(`[RSS] Loaded ${valid.length} items from feeds/${tabName}.json`);
+          return { items: valid, failCount: 0, total: 1 };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[RSS] Local JSON unavailable, falling back to proxy:', err.message);
+  }
 
-  // Stagger each request by 500 ms to avoid allorigins.win rate-limiting
-  // when multiple feeds are fetched at the same time.
+  // ── Fallback: CORS proxy (used only before first GitHub Actions run) ─────
+  const feeds = FEEDS[tabName];
   const promises = feeds.map((feed, i) =>
     new Promise((resolve) => setTimeout(resolve, i * 500))
       .then(() => fetchFeed(feed))
@@ -239,7 +256,6 @@ async function fetchAllFeeds(tabName) {
     }
   });
 
-  // Sort newest-first
   allItems.sort((a, b) => {
     const tA = new Date(a.pubDate).getTime() || 0;
     const tB = new Date(b.pubDate).getTime() || 0;
