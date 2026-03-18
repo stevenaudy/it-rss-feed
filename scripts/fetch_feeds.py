@@ -65,31 +65,67 @@ TECH_KEYWORDS_EN = re.compile(
 
 TECH_KEYWORDS_ID = re.compile(
     r'''(?x)
-    cloud|kubernetes|docker|kontainer|server|infrastruktur|jaringan|
-    pusat\s*data|data\s*center|keamanan\s*siber|siber|
-    perangkat\s*keras|perangkat\s*lunak|chipset|prosesor|
-    aplikasi|platform|teknologi|digital|transformasi\s*digital|
-    kecerdasan\s*buatan|ai\b|llm|machine\s*learning|
-    startup|fintech|e.?commerce|marketplace|
-    internet|wifi|5g|broadband|fiber|telekomunikasi|
-    malware|ransomware|hacker|kebocoran\s*data|privasi|
-    android|ios|iphone|smartphone|laptop|gadget|
-    software|hardware|firmware|
-    devops|otomasi|monitoring|
-    aws|azure|gcp|alibaba''', re.IGNORECASE
+    cloud|kubernetes|docker|kontainer|
+    server|infrastruktur|jaringan\s*(?:komputer|internet|seluler|lokal)|
+    pusat\s*data|data\s*center|
+    keamanan\s*siber|serangan\s*siber|kejahatan\s*siber|siber|
+    perangkat\s*keras|perangkat\s*lunak|chipset|prosesor|semikonduktor|
+    kecerdasan\s*buatan|artificial\s*intelligence|
+    ai\s+(?:model|tools?|agent|system|platform|server|chip)|
+    llm|large\s*language|generative\s*ai|
+    startup\s*(?:teknologi|tech)|fintech|
+    telekomunikasi|5g|broadband|fiber\s*optik|
+    malware|ransomware|hacker|kebocoran\s*data|phishing|enkripsi|
+    android|ios|iphone|smartphone|
+    software|firmware|source\s*code|open\s*source|
+    devops|cloud\s*computing|
+    aws|azure|gcp|alibaba\s*cloud|
+    developer|programming|coding|
+    aplikasi\s*(?:mobile|web|ai|digital|pintar)|
+    internet\s*of\s*things|iot|
+    wifi|bluetooth|
+    chip\s*(?:ai|gpu|cpu)|gpu|cpu|
+    data\s*(?:breach|leak|center|science)|
+    keamanan\s*data|privasi\s*data|
+    transformasi\s*digital''', re.IGNORECASE
 )
 
-# Sources we fully trust — skip keyword filter (already 100% on-topic)
+# Negative blocklist — blocks clearly non-IT topics by title (for Indonesian sources)
+BLOCKED_ID = re.compile(
+    r'''(?x)
+    cuaca|prakiraan\s*(?:cuaca|hujan)|suhu\s*(?:udara|jakarta|jawa)|
+    gempa|banjir|longsor|bencana\s*alam|karhutla|kebakaran\s*hutan|
+    satwa|hewan\s*(?:langka|liar)|burung|buaya|harimau|gajah|penyelundupan\s*(?:satwa|hewan)|
+    hilal|lebaran|mudik|ramadan|idul\s*fitri|ketupat|
+    campak|penyakit\s*(?:menular|infeksi)|vaksin|virus(?!\s*(?:komputer|malware))|covid|
+    wisata|pariwisata|destinasi\s*wisata|
+    candi|situs\s*(?:budaya|sejarah|arkeologi)|museum\s*(?!virtual|digital)|
+    danau\s*purba|fosil|meteor|asteroid|nebula|bintang\s*(?:sekarat|mati)|
+    karhutla|titik\s*api|hutan\s*(?:lindung|bakar)|
+    nelayan|pertanian|perkebunan|ternak|
+    gempa\s*bumi|tsunami|gunung\s*(?:api|berapi|meletus)|
+    penyelundupan|perdagangan\s*satwa|
+    longsor|TPST|sampah\s*(?:organik|plastik|TPA)''',
+    re.IGNORECASE
+)
+
+# Sources 100% on-topic — skip keyword filter
 TRUSTED_SOURCES = {
     'The Hacker News', 'Krebs on Security',
     'The New Stack', 'Detik iNet',
 }
 
-def is_relevant(title, summary, source):
+# Indonesian sources where negative blocklist applies
+INDONESIA_SOURCES = {'Kompas Tekno', 'Detik iNet', 'Tempo Tekno', 'CNBC Indonesia'}
+
+def is_relevant(title, full_text, source):
     """Return True if the article is within the IT/DevOps/Security/Cloud scope."""
     if source in TRUSTED_SOURCES:
         return True
-    text = f"{title} {summary}"
+    # Fast path: block clearly non-IT topics by title for Indonesian sources
+    if source in INDONESIA_SOURCES and BLOCKED_ID.search(title):
+        return False
+    text = f"{title} {full_text}"
     return bool(TECH_KEYWORDS_EN.search(text) or TECH_KEYWORDS_ID.search(text))
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -132,9 +168,10 @@ for tab, configs in FEEDS.items():
                 raw = (getattr(e, 'summary', '') or getattr(e, 'description', '')
                        or (e.content[0].get('value', '') if hasattr(e, 'content') and e.content else ''))
                 if not title: continue
-                summary_text = trunc(strip_html(raw), 200)
-                # Relevance filter — drop articles outside IT/DevOps/Security/Cloud scope
-                if not is_relevant(title, summary_text, c['name']):
+                raw_full = strip_html(raw)
+                summary_text = trunc(raw_full, 200)
+                # Relevance filter — check against FULL raw text, not truncated
+                if not is_relevant(title, raw_full, c['name']):
                     skipped += 1
                     continue
                 items.append({'title': title, 'summary': summary_text,

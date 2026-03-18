@@ -1,0 +1,5 @@
+/feeds/*.json
+  Cache-Control: no-cache, must-revalidate
+
+/*
+  Cache-Control: max-age=300

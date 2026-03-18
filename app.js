@@ -1,5 +1,7 @@
 'use strict';
 
+const APP_VERSION = 'v1.3';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
@@ -632,6 +634,10 @@ function registerServiceWorker() {
 
 function init() {
   registerServiceWorker();
+
+  // Display app version in header
+  const verEl = document.getElementById('appVersion');
+  if (verEl) verEl.textContent = APP_VERSION;
 
   // Restore and validate saved tab from localStorage
   const savedTab = localStorage.getItem('activeTab');
