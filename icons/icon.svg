@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#161b22"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="192" height="192" rx="36" fill="url(#bg)"/>
+
+  <!-- Signal arcs (WiFi-style) -->
+  <path d="M44 88 Q96 28 148 88" fill="none" stroke="#58a6ff" stroke-width="6" stroke-linecap="round" opacity="0.25"/>
+  <path d="M60 88 Q96 44 132 88" fill="none" stroke="#58a6ff" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+  <path d="M77 88 Q96 62 115 88" fill="none" stroke="#58a6ff" stroke-width="6" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- Center dot -->
+  <circle cx="96" cy="90" r="8" fill="#58a6ff"/>
+
+  <!-- "IT NEWS" label -->
+  <text
+    x="96" y="140"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-size="26"
+    font-weight="700"
+    fill="#58a6ff"
+    text-anchor="middle"
+    letter-spacing="3"
+  >IT</text>
+  <text
+    x="96" y="162"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-size="14"
+    font-weight="500"
+    fill="#8b949e"
+    text-anchor="middle"
+    letter-spacing="4"
+  >NEWS</text>
+</svg>

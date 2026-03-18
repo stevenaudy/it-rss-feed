@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!--
+    Content Security Policy:
+    - default-src 'self'          : only load resources from same origin by default
+    - connect-src rss2json.com    : allow RSS-to-JSON API calls only
+    - script-src 'self'           : no inline scripts, no external scripts
+    - style-src 'self' 'unsafe-inline': allow our stylesheet + JS element.style writes
+    - img-src 'self' data:        : own icons + data URIs only (no external images)
+    - object-src 'none'           : block Flash/plugins
+    - base-uri 'self'             : prevent base tag injection
+    - form-action 'none'          : no form submissions
+  -->
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="
+      default-src 'self';
+      connect-src https://api.rss2json.com;
+      script-src 'self';
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data:;
+      font-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      form-action 'none';
+    "
+  />
+
+  <title>IT News Feed</title>
+  <meta name="description" content="Top IT news: Infrastructure, DevOps, Cloud & Cybersecurity" />
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- iOS PWA meta tags (required for iPhone Add to Home Screen) -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="IT News" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+
+  <!-- Theme color for browser chrome -->
+  <meta name="theme-color" content="#0d1117" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── Fixed Header ──────────────────────────────────────────────────── -->
+  <header class="header" role="banner">
+    <div class="header-content">
+      <div class="header-logo">
+        <span class="header-icon" aria-hidden="true">📡</span>
+        <h1 class="header-title">IT News Feed</h1>
+      </div>
+      <button
+        class="refresh-btn"
+        id="refreshBtn"
+        aria-label="Perbarui berita"
+        title="Perbarui berita"
+      >
+        <span class="refresh-icon" id="refreshIcon" aria-hidden="true">↻</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Tab Bar ────────────────────────────────────────────────────────── -->
+  <nav class="tab-bar" role="tablist" aria-label="Pilih sumber berita">
+    <button
+      class="tab-btn active"
+      role="tab"
+      aria-selected="true"
+      aria-controls="cardList"
+      data-tab="global"
+      id="tabGlobal"
+    >
+      🌐 Global
+    </button>
+    <button
+      class="tab-btn"
+      role="tab"
+      aria-selected="false"
+      aria-controls="cardList"
+      data-tab="indonesia"
+      id="tabIndonesia"
+    >
+      🇮🇩 Indonesia
+    </button>
+  </nav>
+
+  <!-- ── Main Content ───────────────────────────────────────────────────── -->
+  <main class="main" role="main">
+
+    <!-- Status bar: last updated timestamp -->
+    <div class="status-bar" aria-live="polite" aria-atomic="true">
+      <span class="last-updated" id="lastUpdated">Memuat…</span>
+    </div>
+
+    <!-- News card list -->
+    <section
+      id="cardList"
+      role="tabpanel"
+      aria-label="Daftar berita"
+      aria-live="polite"
+    >
+      <!-- Populated by app.js -->
+    </section>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination" style="display: none;">
+      <button class="load-more-btn" id="loadMoreBtn">Load More</button>
+    </div>
+
+  </main>
+
+  <!-- ── Toast Notification ────────────────────────────────────────────── -->
+  <div
+    class="toast"
+    id="toast"
+    role="alert"
+    aria-live="assertive"
+    aria-atomic="true"
+  ></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
