@@ -26,8 +26,9 @@ const PROXY_CONFIGS = [
   },
 ];
 
-const FETCH_TIMEOUT_MS  = 10000;               // 10s per proxy attempt
-const ITEMS_PER_PAGE    = 10;
+const FETCH_TIMEOUT_MS      = 10000;         // 10s per proxy attempt
+const LOCAL_JSON_TIMEOUT_MS = 5000;          // 5s for same-origin feeds/*.json
+const ITEMS_PER_PAGE        = 10;
 const FETCH_COUNT       = 20;                  // items fetched per feed
 const REFRESH_INTERVAL  = 60 * 60 * 1000;      // 1 hour in ms
 
@@ -57,6 +58,29 @@ const BADGE_CLASS = {
   engineering: 'badge-engineering',
   cloud:       'badge-cloud',
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// localStorage Feed Cache — persists articles across sessions / tab switches
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // serve stale data up to 2 h old
+
+function saveToCache(tabName, items) {
+  try {
+    localStorage.setItem(`it-news-cache-${tabName}`, JSON.stringify({ ts: Date.now(), items }));
+  } catch { /* localStorage quota — non-fatal */ }
+}
+
+function loadFromCache(tabName) {
+  try {
+    const raw = localStorage.getItem(`it-news-cache-${tabName}`);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.items) || data.items.length === 0) return null;
+    if (Date.now() - (data.ts || 0) > CACHE_MAX_AGE_MS) return null;
+    return data.items;
+  } catch { return null; }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Application State
@@ -219,7 +243,7 @@ async function fetchFeed(feedConfig) {
 async function fetchAllFeeds(tabName) {
   // ── Primary: static JSON pre-built by GitHub Actions (same origin, no CORS) ──
   try {
-    const res = await fetchWithTimeout(`./feeds/${tabName}.json`, FETCH_TIMEOUT_MS);
+    const res = await fetchWithTimeout(`./feeds/${tabName}.json`, LOCAL_JSON_TIMEOUT_MS);
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.items) && data.items.length > 0) {
@@ -458,8 +482,18 @@ async function loadTab(tabName, isRefresh = false, isManual = false) {
   ts.loading = true;
   setRefreshLoading(true);
 
-  // Show skeleton only on first load or hard refresh with no existing data
-  if (!isRefresh || ts.items.length === 0) {
+  // Restore from localStorage immediately — prevents blank screen on tab switch / return visit
+  if (ts.items.length === 0) {
+    const cached = loadFromCache(tabName);
+    if (cached) {
+      ts.items = cached;
+      ts.displayCount = 0;
+      renderInitialCards(tabName);
+    }
+  }
+
+  // Show skeleton only when there is genuinely nothing to display yet
+  if (ts.items.length === 0) {
     showSkeleton();
   }
 
@@ -477,12 +511,24 @@ async function loadTab(tabName, isRefresh = false, isManual = false) {
 
     ts.items        = items;
     ts.displayCount = 0;
-    if (items.length > 0) ts.lastTopDate = items[0].pubDate;
+    if (items.length > 0) {
+      ts.lastTopDate = items[0].pubDate;
+      saveToCache(tabName, items);
+    }
 
     if (failCount === total) {
-      // All feeds failed
-      showError('Gagal memuat semua feed. Periksa koneksi internet Anda.');
-      updateStatusBar('Gagal memuat berita');
+      // All feeds failed — keep showing cached data if available
+      const stale = loadFromCache(tabName);
+      if (stale && stale.length > 0) {
+        ts.items = stale;
+        ts.displayCount = 0;
+        renderInitialCards(tabName);
+        showToast('Gagal memperbarui. Menampilkan data tersimpan.');
+        updateStatusBar('Tidak dapat memperbarui · data tersimpan');
+      } else {
+        showError('Gagal memuat semua feed. Periksa koneksi internet Anda.');
+        updateStatusBar('Gagal memuat berita');
+      }
     } else {
       renderInitialCards(tabName);
       const time   = currentTimeString();
@@ -501,8 +547,13 @@ async function loadTab(tabName, isRefresh = false, isManual = false) {
 
   } catch (err) {
     console.error('[RSS] loadTab error:', err);
-    showError('Gagal memuat berita. Periksa koneksi internet Anda.');
-    updateStatusBar('Gagal memuat');
+    if (ts.items.length > 0) {
+      showToast('Gagal memperbarui. Menampilkan data tersimpan.');
+      updateStatusBar('Tidak dapat memperbarui · data tersimpan');
+    } else {
+      showError('Gagal memuat berita. Periksa koneksi internet Anda.');
+      updateStatusBar('Gagal memuat');
+    }
   } finally {
     ts.loading = false;
     setRefreshLoading(false);
@@ -618,6 +669,20 @@ function init() {
   // Initial load
   loadTab(state.activeTab);
   startAutoRefresh();
+
+  // Silently pre-load the background tab so switching tabs is instant
+  const bgTab = Object.keys(FEEDS).find((t) => t !== state.activeTab);
+  if (bgTab) {
+    fetchAllFeeds(bgTab).then(({ items }) => {
+      if (items.length > 0) {
+        const bts = state.tabs[bgTab];
+        bts.items        = items;
+        bts.displayCount = 0;
+        bts.lastTopDate  = items[0].pubDate || null;
+        saveToCache(bgTab, items);
+      }
+    }).catch(() => {});
+  }
 }
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────

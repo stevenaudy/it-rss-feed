@@ -34,6 +34,66 @@ FEEDS = {
     ],
 }
 
+# ── Keyword relevance filter ─────────────────────────────────────────────────
+# Articles whose title+summary contain NONE of these words are discarded.
+# Covers: Infrastructure, Hardware, Technology, DevOps, Cloud, Security (EN + ID)
+
+TECH_KEYWORDS_EN = re.compile(
+    r'''(?x)
+    cloud|kubernetes|k8s|docker|container|serverless|microservice|
+    devops|devsecops|sre|platform\s*engineering|site\s*reliability|
+    infrastructure|server|data\s*cent(?:er|re)|datacenter|
+    network|firewall|load\s*balanc|vpn|dns|cdn|bgp|
+    linux|unix|windows\s*server|operating\s*system|kernel|
+    cpu|gpu|chip|semiconductor|processor|arm|x86|risc|
+    hardware|nvme|ssd|raid|memory|ram|
+    cybersecurity|cyber\s*security|security|vulnerability|cve|exploit|
+    malware|ransomware|phishing|breach|hack|zero.?day|patch|
+    software|programming|developer|api|sdk|open.?source|github|git|
+    artificial\s*intelligence|machine\s*learning|ai\b|llm|generative|
+    automation|ci.?cd|pipeline|monitoring|observability|telemetry|
+    deployment|helm|terraform|ansible|puppet|chef|jenkins|
+    database|sql|nosql|postgresql|mysql|mongodb|redis|elasticsearch|
+    storage|backup|disaster\s*recovery|dr\b|rto|rpo|
+    aws|azure|gcp|google\s*cloud|alibaba\s*cloud|
+    5g|edge\s*computing|iot|internet\s*of\s*things|
+    microcontroller|firmware|embedded|
+    vpn|zero\s*trust|sase|siem|soar|edr|xdr|mdr|
+    incident\s*response|pen\s*test|penetration|
+    tech|technology|digital\s*transform''', re.IGNORECASE
+)
+
+TECH_KEYWORDS_ID = re.compile(
+    r'''(?x)
+    cloud|kubernetes|docker|kontainer|server|infrastruktur|jaringan|
+    pusat\s*data|data\s*center|keamanan\s*siber|siber|
+    perangkat\s*keras|perangkat\s*lunak|chipset|prosesor|
+    aplikasi|platform|teknologi|digital|transformasi\s*digital|
+    kecerdasan\s*buatan|ai\b|llm|machine\s*learning|
+    startup|fintech|e.?commerce|marketplace|
+    internet|wifi|5g|broadband|fiber|telekomunikasi|
+    malware|ransomware|hacker|kebocoran\s*data|privasi|
+    android|ios|iphone|smartphone|laptop|gadget|
+    software|hardware|firmware|
+    devops|otomasi|monitoring|
+    aws|azure|gcp|alibaba''', re.IGNORECASE
+)
+
+# Sources we fully trust — skip keyword filter (already 100% on-topic)
+TRUSTED_SOURCES = {
+    'The Hacker News', 'Krebs on Security',
+    'The New Stack', 'Detik iNet',
+}
+
+def is_relevant(title, summary, source):
+    """Return True if the article is within the IT/DevOps/Security/Cloud scope."""
+    if source in TRUSTED_SOURCES:
+        return True
+    text = f"{title} {summary}"
+    return bool(TECH_KEYWORDS_EN.search(text) or TECH_KEYWORDS_ID.search(text))
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
 def strip_html(t):
     if not t: return ''
     t = re.sub(r'<[^>]+>', ' ', t)
@@ -63,7 +123,7 @@ for tab, configs in FEEDS.items():
         try:
             raw_xml = fetch_feed_content(c['url'])
             feed = feedparser.parse(raw_xml if raw_xml else c['url'])
-            added = 0
+            added = skipped = 0
             for e in feed.entries:
                 if added >= 20: break
                 link = getattr(e, 'link', '') or ''
@@ -72,11 +132,16 @@ for tab, configs in FEEDS.items():
                 raw = (getattr(e, 'summary', '') or getattr(e, 'description', '')
                        or (e.content[0].get('value', '') if hasattr(e, 'content') and e.content else ''))
                 if not title: continue
-                items.append({'title': title, 'summary': trunc(strip_html(raw), 200),
+                summary_text = trunc(strip_html(raw), 200)
+                # Relevance filter — drop articles outside IT/DevOps/Security/Cloud scope
+                if not is_relevant(title, summary_text, c['name']):
+                    skipped += 1
+                    continue
+                items.append({'title': title, 'summary': summary_text,
                               'link': link, 'pubDate': to_iso(e),
                               'source': c['name'], 'category': c['category']})
                 added += 1
-            print(f"  {c['name']}: {added} items")
+            print(f"  {c['name']}: {added} items ({skipped} filtered out)")
         except Exception as ex:
             print(f"  ERROR {c['name']}: {ex}")
     items.sort(key=sort_key, reverse=True)
