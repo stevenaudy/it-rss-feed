@@ -4,24 +4,25 @@
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-// CORS proxies tried in order — first success wins (fallback on rate-limit/timeout)
+// allorigins /raw returns XML directly (no JSON wrapper — faster).
+// /get JSON endpoint used as fallback if /raw returns non-XML.
 const PROXY_CONFIGS = [
   {
-    name: 'allorigins',
+    name: 'allorigins-raw',
+    buildUrl: (feedUrl) =>
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`,
+    extractContent: (res) => res.text(),
+  },
+  {
+    name: 'allorigins-json',
     buildUrl: (feedUrl) =>
       `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`,
     extractContent: async (res) => {
       const json = await res.json();
       if (!json || typeof json.contents !== 'string')
-        throw new Error('Invalid allorigins response');
+        throw new Error('Invalid allorigins/get response');
       return json.contents;
     },
-  },
-  {
-    name: 'corsproxy',
-    buildUrl: (feedUrl) =>
-      `https://corsproxy.io/?url=${encodeURIComponent(feedUrl)}`,
-    extractContent: (res) => res.text(),
   },
 ];
 
@@ -216,8 +217,15 @@ async function fetchFeed(feedConfig) {
 }
 
 async function fetchAllFeeds(tabName) {
-  const feeds   = FEEDS[tabName];
-  const results = await Promise.allSettled(feeds.map(fetchFeed));
+  const feeds = FEEDS[tabName];
+
+  // Stagger each request by 500 ms to avoid allorigins.win rate-limiting
+  // when multiple feeds are fetched at the same time.
+  const promises = feeds.map((feed, i) =>
+    new Promise((resolve) => setTimeout(resolve, i * 500))
+      .then(() => fetchFeed(feed))
+  );
+  const results = await Promise.allSettled(promises);
 
   const allItems = [];
   let failCount  = 0;
