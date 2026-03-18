@@ -4,8 +4,28 @@
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Free CORS proxy — returns raw RSS/Atom XML via JSON envelope
-const PROXY_BASE        = 'https://api.allorigins.win/get';
+// CORS proxies tried in order — first success wins (fallback on rate-limit/timeout)
+const PROXY_CONFIGS = [
+  {
+    name: 'allorigins',
+    buildUrl: (feedUrl) =>
+      `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`,
+    extractContent: async (res) => {
+      const json = await res.json();
+      if (!json || typeof json.contents !== 'string')
+        throw new Error('Invalid allorigins response');
+      return json.contents;
+    },
+  },
+  {
+    name: 'corsproxy',
+    buildUrl: (feedUrl) =>
+      `https://corsproxy.io/?url=${encodeURIComponent(feedUrl)}`,
+    extractContent: (res) => res.text(),
+  },
+];
+
+const FETCH_TIMEOUT_MS  = 10000;               // 10s per proxy attempt
 const ITEMS_PER_PAGE    = 10;
 const FETCH_COUNT       = 20;                  // items fetched per feed
 const REFRESH_INTERVAL  = 60 * 60 * 1000;      // 1 hour in ms
@@ -13,7 +33,7 @@ const REFRESH_INTERVAL  = 60 * 60 * 1000;      // 1 hour in ms
 // RSS Feed configuration — all URLs must be HTTPS
 const FEEDS = {
   global: [
-    { url: 'https://feeds.feedburner.com/TheHackersNews',              name: 'The Hacker News',   category: 'Security' },
+    { url: 'https://thehackernews.com/feeds/posts/default',            name: 'The Hacker News',   category: 'Security' },
     { url: 'https://krebsonsecurity.com/feed/',                        name: 'Krebs on Security', category: 'Security' },
     { url: 'https://thenewstack.io/feed/',                             name: 'The New Stack',     category: 'DevOps'   },
     { url: 'https://devops.com/feed/',                                 name: 'DevOps.com',        category: 'DevOps'   },
@@ -155,26 +175,44 @@ function parseXmlFeed(xmlText, feedConfig) {
 // RSS Fetching
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Fetch with AbortController timeout so hung requests fail fast
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal:      controller.signal,
+      credentials: 'omit',
+      mode:        'cors',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchFeed(feedConfig) {
-  const params = new URLSearchParams({ url: feedConfig.url });
+  let lastError;
 
-  const response = await fetch(`${PROXY_BASE}?${params.toString()}`, {
-    credentials: 'omit',   // no cookies sent to third-party API
-    mode:        'cors',
-  });
+  // Try each proxy in order; move to next on any failure
+  for (const proxy of PROXY_CONFIGS) {
+    try {
+      const proxyUrl = proxy.buildUrl(feedConfig.url);
+      const response = await fetchWithTimeout(proxyUrl, FETCH_TIMEOUT_MS);
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} from ${feedConfig.name}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const xmlText = await proxy.extractContent(response);
+      return parseXmlFeed(xmlText, feedConfig);
+    } catch (err) {
+      lastError = err;
+      console.warn(`[RSS] ${proxy.name} failed for ${feedConfig.name}:`, err.message);
+      // continue to next proxy
+    }
   }
 
-  const json = await response.json();
-
-  // Validate proxy response structure before processing
-  if (!json || typeof json.contents !== 'string') {
-    throw new Error(`Invalid proxy response for ${feedConfig.name}`);
-  }
-
-  return parseXmlFeed(json.contents, feedConfig);
+  throw new Error(`All proxies failed for ${feedConfig.name}: ${lastError?.message}`);
 }
 
 async function fetchAllFeeds(tabName) {
